@@ -92,7 +92,7 @@ let history = [];
 const MAX = 20;
 
 navigator.mediaDevices.getUserMedia({ video: true })
-  .then(s => video.srcObject = s);
+  .then(stream => video.srcObject = stream);
 
 function color(e) {
   return {
@@ -109,9 +109,9 @@ function drawGraph() {
   history.forEach((p,i)=>{
     const x=i*step;
     const y=g.height-(p.v/100)*g.height;
-    gctx.strokeStyle=color(p.e);
     i?gctx.lineTo(x,y):gctx.moveTo(x,y);
   });
+  gctx.strokeStyle="#38bdf8";
   gctx.stroke();
 }
 
@@ -126,26 +126,27 @@ async function sendFrame() {
     headers:{"Content-Type":"application/json"},
     body:JSON.stringify({image:img})
   });
+
   const d = await r.json();
+
+  document.getElementById("emoji").innerText = d.emoji;
+  document.getElementById("emotion").innerText = d.emotion;
+  document.getElementById("confidence").innerText = d.confidence + "%";
+  document.getElementById("accuracy").innerText = d.accuracy + "%";
+  document.getElementById("reply").innerText = d.reply;
 
   ctx.drawImage(video,0,0,canvas.width,canvas.height);
 
-  document.getElementById("emoji").innerText=d.emoji;
-  document.getElementById("emotion").innerText=d.emotion;
-  document.getElementById("confidence").innerText=d.confidence+"%";
-  document.getElementById("accuracy").innerText=d.accuracy+"%";
-  document.getElementById("reply").innerText=d.reply;
-
   if (d.face) {
-    const [x,y,w,h]=d.face;
+    const [x,y,w,h] = d.face;
     ctx.strokeStyle="lime";
     ctx.lineWidth=3;
     ctx.strokeRect(x,y,w,h);
   }
 
-  if (d.emotion!=="No face" && d.emotion!=="Error") {
+  if (d.emotion && d.confidence) {
     history.push({v:d.confidence,e:d.emotion});
-    if(history.length>MAX) history.shift();
+    if(history.length > MAX) history.shift();
     drawGraph();
   }
 }
