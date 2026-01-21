@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import tensorflow as tf
 import numpy as np
@@ -9,12 +10,16 @@ import os
 
 app = FastAPI()
 
+# ---------- CORS ----------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ---------- SERVE FRONTEND ----------
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 # ---------- LOAD MODEL ----------
 MODEL_PATH = "emotion_mobilenet.h5"
@@ -52,6 +57,7 @@ face_cascade = cv2.CascadeClassifier(
 class ImageData(BaseModel):
     image: str
 
+# ---------- PREDICT API ----------
 @app.post("/predict")
 def predict(data: ImageData):
     try:
@@ -59,15 +65,27 @@ def predict(data: ImageData):
         img = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
 
         if img is None:
-            return {"face": None, "emotion": "No face", "confidence": 0,
-                    "accuracy": MODEL_ACCURACY, "reply": "Camera unclear", "emoji": "⚠️"}
+            return {
+                "face": None,
+                "emotion": "No face",
+                "confidence": 0,
+                "accuracy": MODEL_ACCURACY,
+                "reply": "Camera unclear",
+                "emoji": "⚠️"
+            }
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         faces = face_cascade.detectMultiScale(gray, 1.2, 5, minSize=(60, 60))
 
         if len(faces) == 0:
-            return {"face": None, "emotion": "No face", "confidence": 0,
-                    "accuracy": MODEL_ACCURACY, "reply": "Please face camera", "emoji": "👤"}
+            return {
+                "face": None,
+                "emotion": "No face",
+                "confidence": 0,
+                "accuracy": MODEL_ACCURACY,
+                "reply": "Please face the camera",
+                "emoji": "👤"
+            }
 
         x, y, w, h = faces[0]
         face = gray[y:y+h, x:x+w]
@@ -90,11 +108,22 @@ def predict(data: ImageData):
             "emoji": emoji_map[emotion]
         }
 
-    except:
-        return {"face": None, "emotion": "Error", "confidence": 0,
-                "accuracy": MODEL_ACCURACY, "reply": "Processing error", "emoji": "❌"}
+    except Exception as e:
+        return {
+            "face": None,
+            "emotion": "Error",
+            "confidence": 0,
+            "accuracy": MODEL_ACCURACY,
+            "reply": "Processing error",
+            "emoji": "❌"
+        }
 
+# ---------- RUN ----------
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("index:app", host="0.0.0.0",
-                port=int(os.environ.get("PORT", 8000)))
+    uvicorn.run(
+        "index:app",
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 8000)),
+        reload=True
+    )
