@@ -7,37 +7,43 @@
 <style>
 body {
   margin: 0;
-  height: 100vh;
+  min-height: 100vh;
   background: #020617;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
   align-items: center;
   font-family: Arial;
   color: white;
 }
+
 h2 {
-  position: absolute;
-  top: 20px;
+  margin: 20px 0;
   color: #38bdf8;
 }
+
 .container {
   display: flex;
   gap: 50px;
+  margin-top: 20px;
 }
+
 .video-box {
   position: relative;
 }
+
 video, canvas {
   width: 320px;
   height: 320px;
   border-radius: 14px;
   border: 3px solid #38bdf8;
 }
-canvas {
+
+canvas#canvas {
   position: absolute;
   top: 0;
   left: 0;
 }
+
 .panel {
   background: #0f172a;
   padding: 25px;
@@ -45,14 +51,32 @@ canvas {
   width: 320px;
   text-align: center;
 }
+
 .emoji {
   font-size: 60px;
+  margin-bottom: 10px;
 }
+
 .stat {
   margin: 6px 0;
 }
-.graph {
-  margin-top: 15px;
+
+/* GRAPH SECTION */
+.graph-container {
+  margin: 40px 0 20px;
+  background: #0f172a;
+  padding: 20px;
+  border-radius: 16px;
+  width: 700px;
+  text-align: center;
+}
+
+.graph-title {
+  color: #38bdf8;
+  margin-bottom: 10px;
+}
+
+#emotionGraph {
   background: #020617;
   border-radius: 10px;
 }
@@ -60,6 +84,7 @@ canvas {
 </head>
 
 <body>
+
 <h2>Live Webcam Emotion Detection</h2>
 
 <div class="container">
@@ -75,9 +100,14 @@ canvas {
     <div class="stat">Confidence: <span id="confidence">--%</span></div>
     <div class="stat">Accuracy: <span id="accuracy">--%</span></div>
     <div class="stat" id="reply">Waiting...</div>
-    <canvas id="emotionGraph" class="graph" width="280" height="120"></canvas>
   </div>
 
+</div>
+
+<!-- GRAPH BELOW -->
+<div class="graph-container">
+  <div class="graph-title">Emotion Confidence Over Time</div>
+  <canvas id="emotionGraph" width="660" height="160"></canvas>
 </div>
 
 <script>
@@ -89,42 +119,40 @@ const g = document.getElementById("emotionGraph");
 const gctx = g.getContext("2d");
 
 let history = [];
-const MAX = 20;
+const MAX = 25;
 
 navigator.mediaDevices.getUserMedia({ video: true })
   .then(stream => video.srcObject = stream);
 
-function color(e) {
-  return {
-    Happy:"#22c55e", Sad:"#3b82f6", Angry:"#ef4444",
-    Fear:"#a855f7", Surprise:"#facc15", Neutral:"#94a3b8"
-  }[e] || "#64748b";
-}
-
 function drawGraph() {
-  gctx.clearRect(0,0,g.width,g.height);
+  gctx.clearRect(0, 0, g.width, g.height);
+
   if (history.length < 2) return;
-  const step = g.width/(MAX-1);
+
+  const step = g.width / (MAX - 1);
   gctx.beginPath();
-  history.forEach((p,i)=>{
-    const x=i*step;
-    const y=g.height-(p.v/100)*g.height;
-    i?gctx.lineTo(x,y):gctx.moveTo(x,y);
+
+  history.forEach((p, i) => {
+    const x = i * step;
+    const y = g.height - (p.v / 100) * g.height;
+    i ? gctx.lineTo(x, y) : gctx.moveTo(x, y);
   });
-  gctx.strokeStyle="#38bdf8";
+
+  gctx.strokeStyle = "#38bdf8";
+  gctx.lineWidth = 2;
   gctx.stroke();
 }
 
 async function sendFrame() {
   if (!video.videoWidth) return;
 
-  ctx.drawImage(video,0,0,canvas.width,canvas.height);
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
   const img = canvas.toDataURL("image/jpeg");
 
   const r = await fetch("/predict", {
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({image:img})
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image: img })
   });
 
   const d = await r.json();
@@ -135,18 +163,18 @@ async function sendFrame() {
   document.getElementById("accuracy").innerText = d.accuracy + "%";
   document.getElementById("reply").innerText = d.reply;
 
-  ctx.drawImage(video,0,0,canvas.width,canvas.height);
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
   if (d.face) {
-    const [x,y,w,h] = d.face;
-    ctx.strokeStyle="lime";
-    ctx.lineWidth=3;
-    ctx.strokeRect(x,y,w,h);
+    const [x, y, w, h] = d.face;
+    ctx.strokeStyle = "lime";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x, y, w, h);
   }
 
   if (d.emotion && d.confidence) {
-    history.push({v:d.confidence,e:d.emotion});
-    if(history.length > MAX) history.shift();
+    history.push({ v: d.confidence });
+    if (history.length > MAX) history.shift();
     drawGraph();
   }
 }
