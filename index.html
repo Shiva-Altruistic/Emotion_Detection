@@ -1,174 +1,156 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Live Emotion Detection</title>
+<meta charset="UTF-8">
+<title>Live Emotion Detection</title>
 
-  <style>
-    body {
-      margin: 0;
-      height: 100vh;
-      background: #020617;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      font-family: Arial, sans-serif;
-      color: white;
-    }
-
-    h2 {
-      position: absolute;
-      top: 20px;
-      color: #38bdf8;
-    }
-
-    .container {
-      display: flex;
-      gap: 50px;
-      align-items: center;
-    }
-
-    .video-box {
-      position: relative;
-    }
-
-    video, canvas {
-      width: 320px;
-      height: 320px;
-      border-radius: 14px;
-      border: 3px solid #38bdf8;
-    }
-
-    canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-    }
-
-    .reaction-box {
-      background: #0f172a;
-      padding: 25px 35px;
-      border-radius: 16px;
-      width: 320px;
-      text-align: center;
-      box-shadow: 0 0 20px rgba(56,189,248,0.3);
-    }
-
-    .emoji {
-      font-size: 60px;
-      margin-bottom: 10px;
-    }
-
-    .stat {
-      margin: 6px 0;
-      font-size: 16px;
-    }
-
-    .label {
-      color: #94a3b8;
-    }
-  </style>
+<style>
+body {
+  margin: 0;
+  height: 100vh;
+  background: #020617;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-family: Arial;
+  color: white;
+}
+h2 {
+  position: absolute;
+  top: 20px;
+  color: #38bdf8;
+}
+.container {
+  display: flex;
+  gap: 50px;
+}
+.video-box {
+  position: relative;
+}
+video, canvas {
+  width: 320px;
+  height: 320px;
+  border-radius: 14px;
+  border: 3px solid #38bdf8;
+}
+canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.panel {
+  background: #0f172a;
+  padding: 25px;
+  border-radius: 16px;
+  width: 320px;
+  text-align: center;
+}
+.emoji {
+  font-size: 60px;
+}
+.stat {
+  margin: 6px 0;
+}
+.graph {
+  margin-top: 15px;
+  background: #020617;
+  border-radius: 10px;
+}
+</style>
 </head>
 
 <body>
-
 <h2>Live Webcam Emotion Detection</h2>
 
 <div class="container">
 
-  <!-- VIDEO + CANVAS -->
   <div class="video-box">
-    <video id="video" autoplay></video>
+    <video id="video" autoplay playsinline></video>
     <canvas id="canvas" width="320" height="320"></canvas>
   </div>
 
-  <!-- RIGHT PANEL -->
-  <div class="reaction-box">
+  <div class="panel">
     <div id="emoji" class="emoji">😐</div>
-
-    <div class="stat">
-      <span class="label">Emotion:</span>
-      <span id="emotion">--</span>
-    </div>
-
-    <div class="stat">
-      <span class="label">Confidence:</span>
-      <span id="confidence">--%</span>
-    </div>
-
-    <div class="stat">
-      <span class="label">Model Accuracy:</span>
-      <span id="accuracy">--%</span>
-    </div>
-
-    <div class="stat" id="reply">Waiting for detection...</div>
+    <div class="stat">Emotion: <span id="emotion">--</span></div>
+    <div class="stat">Confidence: <span id="confidence">--%</span></div>
+    <div class="stat">Accuracy: <span id="accuracy">--%</span></div>
+    <div class="stat" id="reply">Waiting...</div>
+    <canvas id="emotionGraph" class="graph" width="280" height="120"></canvas>
   </div>
 
 </div>
 
 <script>
-  const video = document.getElementById("video");
-  const canvas = document.getElementById("canvas");
-  const ctx = canvas.getContext("2d");
-  let lastEmotion = "";
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
 
-  // Access webcam
-  navigator.mediaDevices.getUserMedia({ video: true })
-    .then(stream => video.srcObject = stream)
-    .catch(err => alert("Camera error: " + err));
+const g = document.getElementById("emotionGraph");
+const gctx = g.getContext("2d");
 
-  function speak(text) {
-    if (!text) return;
-    const msg = new SpeechSynthesisUtterance(text);
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(msg);
+let history = [];
+const MAX = 20;
+
+navigator.mediaDevices.getUserMedia({ video: true })
+  .then(s => video.srcObject = s);
+
+function color(e) {
+  return {
+    Happy:"#22c55e", Sad:"#3b82f6", Angry:"#ef4444",
+    Fear:"#a855f7", Surprise:"#facc15", Neutral:"#94a3b8"
+  }[e] || "#64748b";
+}
+
+function drawGraph() {
+  gctx.clearRect(0,0,g.width,g.height);
+  if (history.length < 2) return;
+  const step = g.width/(MAX-1);
+  gctx.beginPath();
+  history.forEach((p,i)=>{
+    const x=i*step;
+    const y=g.height-(p.v/100)*g.height;
+    gctx.strokeStyle=color(p.e);
+    i?gctx.lineTo(x,y):gctx.moveTo(x,y);
+  });
+  gctx.stroke();
+}
+
+async function sendFrame() {
+  if (!video.videoWidth) return;
+
+  ctx.drawImage(video,0,0,canvas.width,canvas.height);
+  const img = canvas.toDataURL("image/jpeg");
+
+  const r = await fetch("/predict", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({image:img})
+  });
+  const d = await r.json();
+
+  ctx.drawImage(video,0,0,canvas.width,canvas.height);
+
+  document.getElementById("emoji").innerText=d.emoji;
+  document.getElementById("emotion").innerText=d.emotion;
+  document.getElementById("confidence").innerText=d.confidence+"%";
+  document.getElementById("accuracy").innerText=d.accuracy+"%";
+  document.getElementById("reply").innerText=d.reply;
+
+  if (d.face) {
+    const [x,y,w,h]=d.face;
+    ctx.strokeStyle="lime";
+    ctx.lineWidth=3;
+    ctx.strokeRect(x,y,w,h);
   }
 
-  async function sendFrame() {
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const image = canvas.toDataURL("image/jpeg");
-
-    const res = await fetch("/predict", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image })
-    });
-
-    const data = await res.json();
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    // Update UI
-    document.getElementById("emoji").innerText = data.emoji || "🙂";
-    document.getElementById("emotion").innerText = data.emotion;
-    document.getElementById("confidence").innerText = data.confidence + "%";
-    document.getElementById("accuracy").innerText = data.accuracy + "%";
-    document.getElementById("reply").innerText = data.reply;
-
-    // Voice (only when emotion changes)
-    if (data.emotion && data.emotion !== lastEmotion && data.emotion !== "No face") {
-      speak(data.reply);
-      lastEmotion = data.emotion;
-    }
-
-    // Draw bounding box
-    if (data.face) {
-      const { x, y, w, h } = data.face;
-      ctx.strokeStyle = "lime";
-      ctx.lineWidth = 3;
-      ctx.strokeRect(x, y, w, h);
-      ctx.fillStyle = "lime";
-      ctx.font = "16px Arial";
-      ctx.fillText(
-        `${data.emotion} (${data.confidence}%)`,
-        x,
-        y - 10
-      );
-    }
+  if (d.emotion!=="No face" && d.emotion!=="Error") {
+    history.push({v:d.confidence,e:d.emotion});
+    if(history.length>MAX) history.shift();
+    drawGraph();
   }
+}
 
-  setInterval(sendFrame, 2000);
+setInterval(sendFrame, 800);
 </script>
 
 </body>
