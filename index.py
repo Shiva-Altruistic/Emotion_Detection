@@ -8,6 +8,9 @@ import cv2
 import base64
 import os
 
+# 🔕 Disable GPU (Render has no GPU)
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
 app = FastAPI()
 
 # ---------- CORS ----------
@@ -57,7 +60,15 @@ face_cascade = cv2.CascadeClassifier(
 class ImageData(BaseModel):
     image: str
 
-# ---------- PREDICT API ----------
+# ---------- GET (Fix 405 error) ----------
+@app.get("/predict")
+def predict_get():
+    return {
+        "status": "OK",
+        "message": "Use POST /predict with base64 image"
+    }
+
+# ---------- POST (Main API) ----------
 @app.post("/predict")
 def predict(data: ImageData):
     try:
@@ -108,7 +119,7 @@ def predict(data: ImageData):
             "emoji": emoji_map[emotion]
         }
 
-    except Exception as e:
+    except Exception:
         return {
             "face": None,
             "emotion": "Error",
@@ -118,12 +129,11 @@ def predict(data: ImageData):
             "emoji": "❌"
         }
 
-# ---------- RUN ----------
+# ---------- RUN (Render safe) ----------
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "index:app",
         host="0.0.0.0",
-        port=int(os.environ.get("PORT", 8000)),
-        reload=True
+        port=int(os.environ.get("PORT", 8000))
     )
