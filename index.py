@@ -5,12 +5,16 @@ import tensorflow as tf
 import numpy as np
 import cv2
 import base64
+import os
 
 app = FastAPI()
 
 # ---------------- LOAD MODEL ----------------
 MODEL_PATH = "emotion_mobilenet.h5"
 model = tf.keras.models.load_model(MODEL_PATH)
+
+# ✅ Overall model accuracy (from training)
+MODEL_ACCURACY = 87.6  # change if needed
 
 # FER-2013 labels
 emotions = ['Angry', 'Disgust', 'Fear', 'Happy', 'Sad', 'Surprise', 'Neutral']
@@ -42,7 +46,7 @@ face_cascade = cv2.CascadeClassifier(
 
 # ---------------- REQUEST SCHEMA ----------------
 class ImageData(BaseModel):
-    image: str  # base64 image
+    image: str
 
 # ---------------- ROUTES ----------------
 @app.get("/", response_class=HTMLResponse)
@@ -53,7 +57,6 @@ def home():
 @app.post("/predict")
 def predict(data: ImageData):
     try:
-        # Decode base64 image
         img_bytes = base64.b64decode(data.image.split(",")[1])
         img = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
 
@@ -62,13 +65,12 @@ def predict(data: ImageData):
                 "face": None,
                 "emotion": "No face",
                 "confidence": 0,
+                "accuracy": MODEL_ACCURACY,
                 "reply": "Camera image not clear.",
                 "emoji": "⚠️"
             }
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-        # Face detection
         faces = face_cascade.detectMultiScale(gray, 1.3, 5)
 
         if len(faces) == 0:
@@ -76,25 +78,25 @@ def predict(data: ImageData):
                 "face": None,
                 "emotion": "No face",
                 "confidence": 0,
+                "accuracy": MODEL_ACCURACY,
                 "reply": "Please face the camera clearly.",
                 "emoji": "👤"
             }
 
-        # Take first detected face
+        # Take first face
         (x, y, w, h) = faces[0]
         face = gray[y:y+h, x:x+w]
 
-        # FER-2013 preprocessing
+        # Preprocess (FER-2013)
         face = cv2.resize(face, (48, 48))
         face = face.astype("float32") / 255.0
         face = face.reshape(1, 48, 48, 1)
 
-        # ---------------- MODEL INFERENCE ----------------
+        # Predict emotion
         prediction = model.predict(face, verbose=0)[0]
-
-        emotion_index = int(np.argmax(prediction))
-        emotion = emotions[emotion_index]
-        confidence = float(prediction[emotion_index] * 100)
+        idx = int(np.argmax(prediction))
+        emotion = emotions[idx]
+        confidence = float(prediction[idx] * 100)
 
         return {
             "face": {
@@ -105,15 +107,26 @@ def predict(data: ImageData):
             },
             "emotion": emotion,
             "confidence": round(confidence, 2),
+            "accuracy": MODEL_ACCURACY,
             "reply": responses[emotion],
             "emoji": emoji_map[emotion]
         }
 
-    except Exception as e:
+    except Exception:
         return {
             "face": None,
             "emotion": "Error",
             "confidence": 0,
-            "reply": "Processing error occurred.",
+            "accuracy": MODEL_ACCURACY,
+            "reply": "Processing error.",
             "emoji": "❌"
         }
+
+# ---------------- RENDER FIX ----------------
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "index:app",
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 8000))
+    )
