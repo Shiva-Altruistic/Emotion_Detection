@@ -1,21 +1,120 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
   <title>Live Emotion Detection</title>
+
   <style>
-    body { font-family: Arial; text-align: center; }
-    canvas { border: 2px solid #444; }
+    body {
+      margin: 0;
+      height: 100vh;
+      background: #020617;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: Arial, sans-serif;
+      color: white;
+    }
+
+    h2 {
+      position: absolute;
+      top: 20px;
+      color: #38bdf8;
+    }
+
+    .container {
+      display: flex;
+      gap: 50px;
+      align-items: center;
+    }
+
+    .video-box {
+      position: relative;
+    }
+
+    video, canvas {
+      width: 320px;
+      height: 320px;
+      border-radius: 14px;
+      border: 3px solid #38bdf8;
+    }
+
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    .reaction-box {
+      background: #0f172a;
+      padding: 25px 35px;
+      border-radius: 16px;
+      width: 320px;
+      text-align: center;
+      box-shadow: 0 0 20px rgba(56,189,248,0.3);
+      animation: fadeIn 0.5s ease-in-out;
+    }
+
+    .emoji {
+      font-size: 60px;
+      margin-bottom: 10px;
+      animation: pop 0.4s ease;
+    }
+
+    #emotion {
+      font-size: 22px;
+      margin: 5px 0;
+      color: #22c55e;
+    }
+
+    #confidence {
+      font-size: 16px;
+      color: #94a3b8;
+    }
+
+    #reply {
+      margin-top: 10px;
+      font-size: 16px;
+      color: #e5e7eb;
+    }
+
+    @keyframes pop {
+      0% { transform: scale(0.5); }
+      100% { transform: scale(1); }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
   </style>
 </head>
+
 <body>
 
 <h2>Live Webcam Emotion Detection</h2>
 
-<video id="video" width="320" height="320" autoplay></video>
-<canvas id="canvas" width="320" height="320"></canvas>
+<div class="container">
 
-<h3 id="emotion"></h3>
-<p id="reply"></p>
+  <!-- 🎥 VIDEO + CANVAS -->
+  <div class="video-box">
+    <video id="video" autoplay></video>
+    <canvas id="canvas" width="320" height="320"></canvas>
+  </div>
+
+  <!-- 😄 REACTION PANEL -->
+  <div class="reaction-box">
+    <div id="emoji" class="emoji">😐</div>
+    <div id="emotion">Emotion: --</div>
+    <div id="confidence">Confidence: --%</div>
+    <div id="reply">Waiting for detection...</div>
+    <div class="history">
+  <h4>Emotion History</h4>
+  <div id="historyBar"></div>
+
+  </div>
+
+</div>
 
 <script>
   const video = document.getElementById("video");
@@ -39,18 +138,19 @@
 
     const data = await res.json();
 
-    // Redraw frame
+    // Clear and redraw
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     if (data.face) {
       const { x, y, w, h } = data.face;
 
-      // Draw bounding box
+      // Bounding box
       ctx.strokeStyle = "lime";
       ctx.lineWidth = 3;
       ctx.strokeRect(x, y, w, h);
 
-      // Draw emotion + confidence
+      // Label
       ctx.fillStyle = "lime";
       ctx.font = "16px Arial";
       ctx.fillText(
@@ -59,15 +159,33 @@
         y - 10
       );
 
+      // Emoji mapping
+      const emojiMap = {
+        Happy: "😄",
+        Sad: "😢",
+        Angry: "😡",
+        Surprise: "😲",
+        Neutral: "😐"
+      };
+
+      document.getElementById("emoji").innerText =
+        emojiMap[data.emotion] || "🙂";
+
       document.getElementById("emotion").innerText =
         "Emotion: " + data.emotion;
+
+      document.getElementById("confidence").innerText =
+        "Confidence: " + data.confidence + "%";
+
       document.getElementById("reply").innerText =
-        data.reply + " | Confidence: " + data.confidence + "%";
+        data.reply;
     }
   }
 
-  setInterval(sendFrame, 2000); // every 2 seconds
+  // ⏱ every 2 seconds
+  setInterval(sendFrame, 2000);
 </script>
 
 </body>
 </html>
+
