@@ -5,12 +5,11 @@ import tensorflow as tf
 import numpy as np
 import cv2
 import base64
-import os
 
 app = FastAPI()
 
 # ---------------- LOAD MODEL ----------------
-MODEL_PATH = "emotion_mobilenet.h5"   # or .keras if you prefer
+MODEL_PATH = "emotion_mobilenet.h5"
 model = tf.keras.models.load_model(MODEL_PATH)
 
 # FER-2013 labels
@@ -18,12 +17,22 @@ emotions = ['Angry', 'Disgust', 'Fear', 'Happy', 'Sad', 'Surprise', 'Neutral']
 
 responses = {
     "Angry": "Please calm down.",
-    "Sad": "It’s okay. Everything will be fine.",
-    "Happy": "Nice! Keep smiling 😄",
-    "Fear": "Relax, you are safe.",
     "Disgust": "Something feels unpleasant.",
+    "Fear": "Relax, you are safe.",
+    "Happy": "Nice! Keep smiling 😄",
+    "Sad": "It’s okay. Everything will be fine.",
     "Surprise": "That was unexpected!",
     "Neutral": "You look calm."
+}
+
+emoji_map = {
+    "Angry": "😡",
+    "Disgust": "🤢",
+    "Fear": "😨",
+    "Happy": "😄",
+    "Sad": "😢",
+    "Surprise": "😲",
+    "Neutral": "😐"
 }
 
 # ---------------- FACE DETECTOR ----------------
@@ -43,47 +52,68 @@ def home():
 
 @app.post("/predict")
 def predict(data: ImageData):
-    # Decode base64 image
-    img_bytes = base64.b64decode(data.image.split(",")[1])
-    img = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
+    try:
+        # Decode base64 image
+        img_bytes = base64.b64decode(data.image.split(",")[1])
+        img = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
 
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        if img is None:
+            return {
+                "face": None,
+                "emotion": "No face",
+                "confidence": 0,
+                "reply": "Camera image not clear.",
+                "emoji": "⚠️"
+            }
 
-    # Face detection
-    faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    if len(faces) == 0:
+        # Face detection
+        faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+
+        if len(faces) == 0:
+            return {
+                "face": None,
+                "emotion": "No face",
+                "confidence": 0,
+                "reply": "Please face the camera clearly.",
+                "emoji": "👤"
+            }
+
+        # Take first detected face
+        (x, y, w, h) = faces[0]
+        face = gray[y:y+h, x:x+w]
+
+        # FER-2013 preprocessing
+        face = cv2.resize(face, (48, 48))
+        face = face.astype("float32") / 255.0
+        face = face.reshape(1, 48, 48, 1)
+
+        # ---------------- MODEL INFERENCE ----------------
+        prediction = model.predict(face, verbose=0)[0]
+
+        emotion_index = int(np.argmax(prediction))
+        emotion = emotions[emotion_index]
+        confidence = float(prediction[emotion_index] * 100)
+
         return {
-            "face": None,
-            "emotion": "No face",
-            "confidence": 0,
-            "reply": "Please face the camera clearly."
+            "face": {
+                "x": int(x),
+                "y": int(y),
+                "w": int(w),
+                "h": int(h)
+            },
+            "emotion": emotion,
+            "confidence": round(confidence, 2),
+            "reply": responses[emotion],
+            "emoji": emoji_map[emotion]
         }
 
-    # Take first detected face
-    (x, y, w, h) = faces[0]
-    face = gray[y:y+h, x:x+w]
-
-    # FER-2013 preprocessing
-    face = cv2.resize(face, (48, 48))
-    face = face.astype("float32") / 255.0
-    face = face.reshape(1, 48, 48, 1)
-
-    # MODEL INFERENCE (CONNECTED HERE ✅)
-    prediction = model.predict(face)[0]
-
-    emotion_index = int(np.argmax(prediction))
-    emotion = emotions[emotion_index]
-    confidence = float(prediction[emotion_index] * 100)
-
-    return {
-        "face": {
-            "x": int(x),
-            "y": int(y),
-            "w": int(w),
-            "h": int(h)
-        },
-        "emotion": emotion,
-        "confidence": round(confidence, 2),
-        "reply": responses[emotion]
-    }
+    except Exception as e:
+        return {
+            "face": None,
+            "emotion": "Error",
+            "confidence": 0,
+            "reply": "Processing error occurred.",
+            "emoji": "❌"
+        }
