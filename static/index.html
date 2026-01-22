@@ -95,26 +95,36 @@ navigator.mediaDevices.getUserMedia({ video: true })
 async function sendFrame() {
   if (!video.videoWidth) return;
 
+  // Capture frame
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
   const img = canvas.toDataURL("image/jpeg");
 
-  const r = await fetch("/predict", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image: img })
-  });
+  // Send to backend
+  const r = await fetch(
+    "https://emotion-detection-2-b56x.onrender.com/predict",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: img })
+    }
+  );
 
   const d = await r.json();
 
-  // Safe UI updates
+  // Update UI safely
   document.getElementById("emoji").innerText = d.emoji || "😐";
   document.getElementById("emotion").innerText = d.emotion || "No Face";
-  document.getElementById("confidence").innerText = (d.confidence ?? "--") + "%";
-  document.getElementById("accuracy").innerText = (d.accuracy ?? "--") + "%";
-  document.getElementById("reply").innerText = d.reply || "Waiting...";
+  document.getElementById("confidence").innerText =
+    (d.confidence ?? "--") + "%";
+  document.getElementById("accuracy").innerText =
+    (d.accuracy ?? "--") + "%";
+  document.getElementById("reply").innerText =
+    d.reply || "Waiting...";
 
+  // Redraw frame
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
+  // Draw face box
   if (d.face) {
     const [x, y, w, h] = d.face;
     ctx.strokeStyle = "lime";
@@ -123,8 +133,10 @@ async function sendFrame() {
   }
 }
 
+// Run every 900 ms
 setInterval(sendFrame, 900);
 </script>
+
 
 </body>
 </html>
