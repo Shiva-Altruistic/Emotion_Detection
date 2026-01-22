@@ -8,12 +8,12 @@ import cv2
 import base64
 import os
 
-# 🔕 Disable GPU (Render has no GPU)
+# Disable GPU (Render safe)
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 app = FastAPI()
 
-# ---------- CORS ----------
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,10 +21,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------- SERVE FRONTEND ----------
+# Serve frontend
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
-# ---------- LOAD MODEL ----------
+# Load model
 MODEL_PATH = "emotion_mobilenet.h5"
 model = tf.keras.models.load_model(MODEL_PATH, compile=False)
 
@@ -52,7 +52,7 @@ emoji_map = {
     "Neutral": "😐"
 }
 
-# ---------- FACE DETECTOR ----------
+# Face detector
 face_cascade = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 )
@@ -60,33 +60,26 @@ face_cascade = cv2.CascadeClassifier(
 class ImageData(BaseModel):
     image: str
 
-# ---------- GET (Fix 405 error) ----------
-@app.get("/predict")
-def predict_get():
-    return {
-        "status": "OK",
-        "message": "Use POST /predict with base64 image"
-    }
-
-# ---------- POST (Main API) ----------
 @app.post("/predict")
 def predict(data: ImageData):
     try:
+        # Decode base64
         img_bytes = base64.b64decode(data.image.split(",")[1])
         img = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
 
         if img is None:
-            return {
-                "face": None,
-                "emotion": "No face",
-                "confidence": 0,
-                "accuracy": MODEL_ACCURACY,
-                "reply": "Camera unclear",
-                "emoji": "⚠️"
-            }
+            raise ValueError("Image decode failed")
+
+        # Resize to match frontend canvas (CRITICAL FIX)
+        img = cv2.resize(img, (320, 320))
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(gray, 1.2, 5, minSize=(60, 60))
+        faces = face_cascade.detectMultiScale(
+            gray,
+            scaleFactor=1.2,
+            minNeighbors=5,
+            minSize=(60, 60)
+        )
 
         if len(faces) == 0:
             return {
@@ -99,14 +92,15 @@ def predict(data: ImageData):
             }
 
         x, y, w, h = faces[0]
-        face = gray[y:y+h, x:x+w]
+        face_img = gray[y:y+h, x:x+w]
 
-        face = cv2.resize(face, (48, 48))
-        face = face.astype("float32") / 255.0
-        face = np.expand_dims(face, axis=(0, -1))
+        face_img = cv2.resize(face_img, (48, 48))
+        face_img = face_img.astype("float32") / 255.0
+        face_img = np.expand_dims(face_img, axis=(0, -1))
 
-        preds = model.predict(face, verbose=0)[0]
+        preds = model.predict(face_img, verbose=0)[0]
         idx = int(np.argmax(preds))
+
         emotion = emotions[idx]
         confidence = float(preds[idx] * 100)
 
@@ -119,17 +113,16 @@ def predict(data: ImageData):
             "emoji": emoji_map[emotion]
         }
 
-    except Exception:
+    except Exception as e:
         return {
             "face": None,
             "emotion": "Error",
             "confidence": 0,
             "accuracy": MODEL_ACCURACY,
-            "reply": "Processing error",
+            "reply": str(e),
             "emoji": "❌"
         }
 
-# ---------- RUN (Render safe) ----------
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
