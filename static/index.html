@@ -2,141 +2,269 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Live Emotion Detection</title>
-
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Emotion AI</title>
 <style>
-body {
-  margin: 0;
-  min-height: 100vh;
-  background: #020617;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  font-family: Arial;
-  color: white;
-}
+    /* --- GLOBAL LAYOUT --- */
+    body {
+        margin: 0;
+        background: radial-gradient(circle at center, #1e293b 0%, #020617 100%);
+        color: white;
+        font-family: 'Segoe UI', sans-serif;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden; /* Prevent scrollbars */
+    }
 
-h2 {
-  margin: 20px 0;
-  color: #38bdf8;
-}
+    /* Floating Title */
+    h2 {
+        margin-bottom: 40px;
+        font-weight: 300;
+        letter-spacing: 4px;
+        text-transform: uppercase;
+        color: #38bdf8;
+        animation: fadeInDown 1s ease-out;
+    }
 
-.container {
-  display: flex;
-  gap: 50px;
-  margin-top: 20px;
-}
+    /* --- FLEX CONTAINER (Centers the panels) --- */
+    .container {
+        display: flex;
+        gap: 50px;
+        align-items: center;
+        justify-content: center;
+        flex-wrap: wrap; /* Stacks on mobile */
+        animation: zoomIn 0.8s ease-out;
+    }
 
-.video-box {
-  position: relative;
-}
+    /* --- VIDEO PANEL (Left) --- */
+    .video-box {
+        position: relative;
+        width: 320px;
+        height: 320px;
+        border-radius: 24px;
+        overflow: hidden;
+        border: 4px solid #334155;
+        box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+        transition: border-color 0.3s ease;
+    }
 
-video, canvas {
-  width: 320px;
-  height: 320px;
-  border-radius: 14px;
-  border: 3px solid #38bdf8;
-}
+    /* Glowing Pulse Animation */
+    .video-box::after {
+        content: "";
+        position: absolute;
+        top: -4px; left: -4px; right: -4px; bottom: -4px;
+        border-radius: 24px;
+        border: 2px solid transparent;
+        animation: borderPulse 3s infinite;
+        pointer-events: none;
+    }
 
-canvas {
-  position: absolute;
-  top: 0;
-  left: 0;
-}
+    video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transform: scaleX(-1); /* Mirror effect */
+    }
 
-.panel {
-  background: #0f172a;
-  padding: 25px;
-  border-radius: 16px;
-  width: 320px;
-  text-align: center;
-}
+    canvas {
+        position: absolute;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        transform: scaleX(-1); /* Mirror bounding box too */
+    }
 
-.emoji {
-  font-size: 60px;
-  margin-bottom: 10px;
-}
+    /* --- RESULT PANEL (Right) --- */
+    .panel {
+        width: 300px;
+        background: rgba(30, 41, 59, 0.7); /* Glassmorphism */
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 24px;
+        padding: 30px;
+        text-align: center;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        
+        /* Smooth transition for color changes */
+        transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
 
-.stat {
-  margin: 8px 0;
-}
+    /* Happy State (Green Glow) */
+    .panel.happy-mode {
+        background: rgba(6, 78, 59, 0.8);
+        border-color: #34d399;
+        box-shadow: 0 0 50px rgba(52, 211, 153, 0.3);
+        transform: scale(1.05); /* Slight pop */
+    }
+
+    .emoji-box {
+        font-size: 90px;
+        margin-bottom: 10px;
+        filter: drop-shadow(0 10px 10px rgba(0,0,0,0.3));
+        animation: float 3s ease-in-out infinite;
+    }
+
+    .info-item {
+        margin: 15px 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+        padding-bottom: 5px;
+    }
+
+    .label { color: #94a3b8; font-size: 0.9rem; }
+    .value { font-size: 1.2rem; font-weight: bold; color: #f1f5f9; }
+
+    #reply {
+        margin-top: 25px;
+        padding: 15px;
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 12px;
+        font-style: italic;
+        color: #7dd3fc;
+        min-height: 40px;
+    }
+
+    /* --- ANIMATIONS --- */
+    @keyframes fadeInDown {
+        from { opacity: 0; transform: translateY(-20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes zoomIn {
+        from { opacity: 0; transform: scale(0.9); }
+        to { opacity: 1; transform: scale(1); }
+    }
+
+    @keyframes float {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-10px); }
+    }
+
+    @keyframes borderPulse {
+        0% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.4); }
+        70% { box-shadow: 0 0 0 15px rgba(56, 189, 248, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
+    }
+
 </style>
 </head>
-
 <body>
 
-<h2>Live Webcam Emotion Detection</h2>
+    <h2>Emotion Recognition AI</h2>
 
-<div class="container">
+    <div class="container">
+        
+        <div class="video-box">
+            <video id="video" autoplay playsinline muted></video>
+            <canvas id="overlay"></canvas>
+        </div>
 
-  <div class="video-box">
-    <video id="video" autoplay playsinline></video>
-    <canvas id="canvas" width="320" height="320"></canvas>
-  </div>
+        <div class="panel" id="resultPanel">
+            <div id="emoji" class="emoji-box">🤖</div>
+            
+            <div class="info-item">
+                <span class="label">Detected</span>
+                <span id="emotion" class="value">Scanning...</span>
+            </div>
 
-  <div class="panel">
-    <div id="emoji" class="emoji">😐</div>
-    <div class="stat">Emotion: <span id="emotion">Waiting...</span></div>
-    <div class="stat">Confidence: <span id="confidence">--%</span></div>
-    <div class="stat">Accuracy: <span id="accuracy">--%</span></div>
-    <div class="stat" id="reply">Waiting for face...</div>
-  </div>
+            <div class="info-item">
+                <span class="label">Confidence</span>
+                <span id="confidence" class="value">--%</span>
+            </div>
 
-</div>
+            <div id="reply">"Initializing system..."</div>
+        </div>
+
+    </div>
+
+    <canvas id="captureCanvas" width="320" height="320" style="display:none;"></canvas>
 
 <script>
-const video = document.getElementById("video");
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
+    const video = document.getElementById("video");
+    const overlay = document.getElementById("overlay");
+    const ctx = overlay.getContext("2d");
+    const resultPanel = document.getElementById("resultPanel");
+    
+    // Capture canvas
+    const captureCanvas = document.getElementById("captureCanvas");
+    const captureCtx = captureCanvas.getContext("2d");
 
-navigator.mediaDevices.getUserMedia({ video: true })
-  .then(stream => video.srcObject = stream);
+    // 1. Setup Camera
+    navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 320 } })
+        .then(stream => video.srcObject = stream)
+        .catch(err => {
+            console.error(err);
+            document.getElementById("reply").innerText = "Camera Access Denied";
+        });
 
-async function sendFrame() {
-  if (!video.videoWidth) return;
+    // 2. Main Loop
+    async function updateLoop() {
+        if (!video.videoWidth) {
+            requestAnimationFrame(updateLoop);
+            return;
+        }
 
-  // Capture frame
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  const img = canvas.toDataURL("image/jpeg");
+        // Draw video frame to hidden canvas for sending
+        captureCtx.drawImage(video, 0, 0, 320, 320);
+        const imgData = captureCanvas.toDataURL("image/jpeg", 0.6);
 
-  // Send to backend
-  const r = await fetch(
-    "https://emotion-detection-2-b56x.onrender.com/predict",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image: img })
+        try {
+            // Send to Python Backend
+            const res = await fetch("/predict", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ image: imgData })
+            });
+            const data = await res.json();
+
+            // Update Text
+            document.getElementById("emoji").innerText = data.emoji || "🤔";
+            document.getElementById("emotion").innerText = data.emotion || "Scanning";
+            document.getElementById("confidence").innerText = (data.confidence || 0) + "%";
+            document.getElementById("reply").innerText = data.reply || "...";
+
+            // Update Panel Style (Happy Mode)
+            if (data.emotion === "Happy") {
+                resultPanel.classList.add("happy-mode");
+            } else {
+                resultPanel.classList.remove("happy-mode");
+            }
+
+            // Draw Face Box
+            // Clear previous drawing
+            ctx.clearRect(0, 0, 320, 320);
+            
+            if (data.face) {
+                const [x, y, w, h] = data.face;
+                
+                // Box Styling
+                ctx.strokeStyle = (data.emotion === "Happy") ? "#34d399" : "#38bdf8";
+                ctx.lineWidth = 4;
+                
+                // Draw rounded rect (simulated)
+                ctx.strokeRect(x, y, w, h);
+                
+                // Add a glow effect to the box lines
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = (data.emotion === "Happy") ? "#34d399" : "#38bdf8";
+            } else {
+                ctx.shadowBlur = 0;
+            }
+
+        } catch (error) {
+            console.error(error);
+        }
+
+        // Repeat every 200ms
+        setTimeout(updateLoop, 200);
     }
-  );
 
-  const d = await r.json();
-
-  // Update UI safely
-  document.getElementById("emoji").innerText = d.emoji || "😐";
-  document.getElementById("emotion").innerText = d.emotion || "No Face";
-  document.getElementById("confidence").innerText =
-    (d.confidence ?? "--") + "%";
-  document.getElementById("accuracy").innerText =
-    (d.accuracy ?? "--") + "%";
-  document.getElementById("reply").innerText =
-    d.reply || "Waiting...";
-
-  // Redraw frame
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-  // Draw face box
-  if (d.face) {
-    const [x, y, w, h] = d.face;
-    ctx.strokeStyle = "lime";
-    ctx.lineWidth = 3;
-    ctx.strokeRect(x, y, w, h);
-  }
-}
-
-// Run every 900 ms
-setInterval(sendFrame, 900);
+    updateLoop();
 </script>
-
 
 </body>
 </html>
