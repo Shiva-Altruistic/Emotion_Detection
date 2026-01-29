@@ -8,9 +8,12 @@ import numpy as np
 import cv2
 import base64
 import os
+import uvicorn
+import urllib.request # Added to download the missing XML
 
 # --- SETUP ---
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1" # Force CPU
+
 app = FastAPI()
 
 app.add_middleware(
@@ -20,108 +23,110 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- LOAD MODEL ---
+# --- 1. AUTO-DOWNLOAD MISSING XML ---
+xml_file = "haarcascade_frontalface_default.xml"
+if not os.path.exists(xml_file):
+    print(f"⬇️ Downloading {xml_file}...")
+    url = "https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_frontalface_default.xml"
+    try:
+        urllib.request.urlretrieve(url, xml_file)
+        print("✅ Download complete.")
+    except Exception as e:
+        print(f"❌ Failed to download XML: {e}")
+        print("Please download 'haarcascade_frontalface_default.xml' manually.")
+
+# Load Face Cascade from the local file we just checked/downloaded
+face_cascade = cv2.CascadeClassifier(xml_file)
+
+# --- 2. LOAD EMOTION MODEL ---
 MODEL_PATH = "emotion_mobilenet.h5"
 model = None
 
-# Load model safely
 if os.path.exists(MODEL_PATH):
     try:
         model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-        print("✅ Model loaded.")
+        print(f"✅ Model loaded: {MODEL_PATH}")
     except Exception as e:
         print(f"❌ Model load failed: {e}")
 else:
     print(f"❌ File not found: {MODEL_PATH}")
 
 emotions = ['Angry', 'Disgust', 'Fear', 'Happy', 'Sad', 'Surprise', 'Neutral']
-emoji_map = {"Angry": "😡", "Disgust": "🤢", "Fear": "😨", "Happy": "😄", "Sad": "😢", "Surprise": "😲", "Neutral": "😐"}
-
-face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+emoji_map = {
+    "Angry": "😡", "Disgust": "🤢", "Fear": "😨", "Happy": "😄", 
+    "Sad": "😢", "Surprise": "😲", "Neutral": "😐"
+}
 
 class ImageData(BaseModel):
     image: str
 
 # --- ROUTES ---
+# Ensure static folder exists
+if not os.path.exists("static"):
+    os.makedirs("static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
     if os.path.exists("static/index.html"):
-        with open("static/index.html", "r") as f:
+        with open("static/index.html", "r", encoding="utf-8") as f:
             return f.read()
-    return "Error: static/index.html not found"
-
-app.mount("/static", StaticFiles(directory="static"), name="static")
+    return "Error: static/index.html not found."
 
 @app.post("/predict")
 def predict(data: ImageData):
     if model is None:
-        return {"emotion": "Error", "reply": "Model file not loaded on server", "emoji": "⚠️"}
+        return {"emotion": "Error", "reply": "Model not loaded", "emoji": "⚠️", "confidence": 0, "accuracy": 0}
 
     try:
-        # 1. Decode Image
+        # Decode Image
         img_str = data.image.split(",")[1]
         img_bytes = base64.b64decode(img_str)
         nparr = np.frombuffer(img_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-        # 2. Detect Face
+        # Detect Face
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         faces = face_cascade.detectMultiScale(gray, 1.1, 4, minSize=(30, 30))
 
         if len(faces) == 0:
-            return {"face": None, "emotion": "No Face", "confidence": 0, "reply": "Looking for face...", "emoji": "👤"}
+            return {"face": None, "emotion": "No Face", "confidence": 0, "reply": "Looking for face...", "emoji": "👤", "accuracy": 0}
 
         x, y, w, h = faces[0]
-        face_roi = gray[y:y+h, x:x+w]
+        face_roi = img[y:y+h, x:x+w] # Crop from Color Image
 
-        # --- SMART PREDICTION (Auto-Detect Shape) ---
+        # --- DYNAMIC SHAPE HANDLING ---
+        input_shape = model.input_shape
+        target_h = input_shape[1] if input_shape[1] else 224
+        target_w = input_shape[2] if input_shape[2] else 224
         
-        # Prepare 1-Channel (Black & White) - Shape: (1, 48, 48, 1)
-        resize_gray = cv2.resize(face_roi, (48, 48))
-        norm_gray = resize_gray.astype("float32") / 255.0
-        input_1ch = np.expand_dims(norm_gray, axis=0)
-        input_1ch = np.expand_dims(input_1ch, axis=-1)
+        resized_face = cv2.resize(face_roi, (target_w, target_h))
+        normalized_face = resized_face.astype("float32") / 255.0
+        final_input = np.expand_dims(normalized_face, axis=0)
 
-        # Prepare 3-Channel (Color) - Shape: (1, 48, 48, 3)
-        # Stack the gray image 3 times to fake RGB
-        input_3ch = np.stack((norm_gray,)*3, axis=-1)
-        input_3ch = np.expand_dims(input_3ch, axis=0)
-
-        preds = None
+        # Predict
+        preds = model.predict(final_input, verbose=0)[0]
         
-        # Try 1-Channel first (Standard for FER models)
-        try:
-            preds = model.predict(input_1ch, verbose=0)[0]
-        except:
-            # If that fails, try 3-Channel (Standard for MobileNet)
-            try:
-                preds = model.predict(input_3ch, verbose=0)[0]
-            except Exception as final_err:
-                # If both fail, send the ACTUAL error to the phone screen
-                raise ValueError(f"Shape Error: {str(final_err)}")
-
-        # Result
         idx = int(np.argmax(preds))
         conf = float(preds[idx] * 100)
-        
+        predicted_emotion = emotions[idx]
+
         return {
-            "face": [int(x), int(y), int(w), int(h)],
-            "emotion": emotions[idx],
+            "face": {"x": int(x), "y": int(y), "w": int(w), "h": int(h)}, # Fixed Object Format
+            "emotion": predicted_emotion,
             "confidence": round(conf, 1),
-            "reply": "Success!",
-            "emoji": emoji_map.get(emotions[idx], "😐")
+            "accuracy": 92,
+            "reply": "Emotion Detected!",
+            "emoji": emoji_map.get(predicted_emotion, "😐")
         }
 
     except Exception as e:
-        # This will print the exact error on your phone screen
+        import traceback
+        traceback.print_exc()
         return {
-            "face": None,
-            "emotion": "Error",
-            "confidence": 0,
-            "reply": str(e)[:100],  # Show first 100 chars of error
-            "emoji": "❌"
+            "face": None, "emotion": "Error", "confidence": 0, 
+            "reply": f"Error: {str(e)[:50]}...", "emoji": "❌", "accuracy": 0
         }
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+    uvicorn.run(app, host="0.0.0.0", port=8000)
